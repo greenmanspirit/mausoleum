@@ -1,2 +1,9 @@
 #!/bin/sh
+
+#this is a wrapper script for maus.md since the minid interpreter doesn't like not having the .md
+
+#move into the /mausoleum directory since this is the expected working directory
+cd /mausoleum
+
+#run maus.md and pass along the arguments
 ./maus.md $@

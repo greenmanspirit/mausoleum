@@ -1,4 +1,4 @@
-#!../minid/bin/mdcl
+#!/bin/mdcl
 module maus
 
 global packageInfo = {}
@@ -7,10 +7,10 @@ global mode = "";
 function main(vararg)
 {
 	parse_arguments(vararg)
-	parse_metadata();
 	switch(mode)
 	{ 
 		case "install":
+			parse_metadata()
 			os.system("git clone "~packageInfo["repo"])
 			writefln("moving into {}",packageInfo["name"])
 			io.changeDir(packageInfo["name"])
@@ -23,14 +23,26 @@ function main(vararg)
 			io.changeDir("..")
 			break;
 		case "uninstall":
-			writefln("Running {} uninstallation",packageInfo["name"]);
+			parse_metadata()
+			writefln("Running {} uninstallation",packageInfo["name"])
 			for(step: 0..#packageInfo["uninstallSteps"])
 				os.system(packageInfo["uninstallSteps"][step])
 			break;
 		case "search":
-			break;
+			io.changeDir("maus_packages");
+			local packages = io.listFiles(".", "/mausoleum/maus_packages/*"~searchTerm~"*.maus")
+			for(i: 0..#packages)
+			{
+					writefln("{}",packages[i][25..#packages[i]-5])
+			}
+			io.changeDir("..");
+			break
+		case "update":
+			io.changeDir("maus_packages")
+			os.system("git pull origin master")
+			break
 		default:
-			break;
+			break
 	}
 }
 
@@ -38,27 +50,40 @@ function parse_arguments(vararg)
 {
 	for(i: 0..#vararg)
 	{
-		local currentArg = vararg[i];
-		switch(currentArg)
+		try
 		{
-			case "--install":
-			case "-i":
-				mode = "install"
-				global package = vararg[i+1]
-				break
-			case "--unistall":
-			case "-u":
-				mode = "uninstall"
-				global package = vararg[i+1]
-				break
-			case "--search":
-			case "-s":
-				mode = "search"
-				global searchTerm = vararg[i+1]
-				break
-			default:
-				writefln("Invalid argument: {}",currentArg)
-				break
+			local currentArg = vararg[i];
+			switch(currentArg)
+			{
+				case "--install":
+				case "-i":
+					mode = "install"
+					global package = vararg[i+1]
+					break
+				case "--unistall":
+				case "-u":
+					mode = "uninstall"
+					global package = vararg[i+1]
+					break
+				case "--search":
+				case "-s":
+					mode = "search"
+					global searchTerm = vararg[i+1]
+					break
+				case "--update":
+				case "-p":
+					mode = "update"
+					break
+				default:
+					writefln("Invalid argument: {}",currentArg)
+					break
+			}
+		}
+		catch(e)
+		{
+			writefln("Not enough arguments")
+			mode = ""
+			break;
 		}
 		if(mode != "")
 			break
@@ -77,7 +102,7 @@ function parse_metadata()
 
 	for(i: 0..#fileContents)
 	{
-		local currentLine = fileContents[i];
+		local currentLine = fileContents[i]
 		if(gettingInstallLines < numInstallSteps)
 		{
 			packageInfo["installSteps"][gettingInstallLines] = currentLine
@@ -118,13 +143,13 @@ function parse_metadata()
 					packageInfo["uninstallSteps"] = array.new(numUninstallSteps)
 					break
 				default:
-					writefln("WTF? \"{}\"",name)
+					writefln("Unknown Metadata (ignoring): \"{}\"",name)
 			}
 		}
 		else
 		{
-			writefln("Invalid metadata: {}",currentLine);
-			return 1;
+			writefln("Invalid metadata: {}",currentLine)
+			return 1
 		}
 	}
 }
