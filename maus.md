@@ -1,8 +1,10 @@
 #!/bin/mdcl
 module maus
 
+global exit = thread.halt
+
 global packageInfo = {}
-global mode = "";
+global mode = ""
 
 function main(vararg)
 {
@@ -11,35 +13,61 @@ function main(vararg)
 	{ 
 		case "install":
 			parse_metadata()
+			writefln("Running {} installation",packageInfo["name"])
 			os.system("git clone "~packageInfo["repo"])
 			writefln("moving into {}",packageInfo["name"])
 			io.changeDir(packageInfo["name"])
 			os.system("git checkout "~packageInfo["commit-object"])
 			if(!isNull(packageInfo["patch-repo"]))
 				os.system("git pull "~packageInfo["patch-repo"])
-			for(step: 0..#packageInfo["installSteps"])
-				os.system(packageInfo["installSteps"][step])
-			writefln("moving out of {}",packageInfo["name"])
+			loadString(packageInfo["installScript"])()
 			io.changeDir("..")
-			break;
+			break
 		case "uninstall":
 			parse_metadata()
 			writefln("Running {} uninstallation",packageInfo["name"])
-			for(step: 0..#packageInfo["uninstallSteps"])
-				os.system(packageInfo["uninstallSteps"][step])
-			break;
+			loadString(packageInfo["uninstallScript"])()
+			break
 		case "search":
-			io.changeDir("maus_packages");
-			local packages = io.listFiles(".", "/mausoleum/maus_packages/*"~searchTerm~"*.maus")
-			for(i: 0..#packages)
+			io.changeDir("packages")
+			local dirs = io.listDirs(".")
+			for(i: 0..#dirs)
 			{
-					writefln("{}",packages[i][25..#packages[i]-5])
+				io.changeDir(dirs[i])
+				local packages = io.listFiles(".", dirs[i]~"/*"~searchTerm~"*.maus")
+				for(a: 0..#packages)
+				{
+						writefln("{}",io.name(packages[a]))
+				}
+				io.changeDir("..")
 			}
-			io.changeDir("..");
+			io.changeDir("..")
 			break
 		case "update":
-			io.changeDir("maus_packages")
-			os.system("git pull origin master")
+			local fileContents = io.readFile("repos.lst").strip().splitLines()
+			io.changeDir("packages")
+			for(i: 0..#fileContents)
+			{
+				local repoInfo = fileContents[i].split()
+				local address = repoInfo[0]
+				local name = repoInfo[1]
+
+				writefln("{}",io.currentDir())
+
+				if(io.exists(name) && io.isDir(name))
+				{
+					io.changeDir(name)
+					os.system("git pull origin master")
+					io.changeDir("..")
+				}
+				else
+				{
+					os.system("rm -rf "~name)
+					os.system("git clone "~address)
+				}
+				
+			}
+			io.changeDir("..")
 			break
 		default:
 			break
@@ -48,6 +76,11 @@ function main(vararg)
 
 function parse_arguments(vararg)
 {
+	if(#vararg == 0)
+	{
+		writefln("I need arguments to run, I'm pretty useless without them")
+		exit();
+	}
 	for(i: 0..#vararg)
 	{
 		try
@@ -82,35 +115,63 @@ function parse_arguments(vararg)
 		catch(e)
 		{
 			writefln("Not enough arguments")
-			mode = ""
-			break;
+			exit()
+			break
 		}
 		if(mode != "")
 			break
 	}
 }
 
+function find_package(package)
+{
+	io.changeDir("packages")
+	local dirs = io.listDirs(".")
+	for(i: 0..#dirs)
+	{
+		io.changeDir(dirs[i])
+		local packages = io.listFiles(".", dirs[i]~"/"~package~".maus")
+		if(#packages > 0)
+			return packages[0]
+		io.changeDir("..")
+	}
+	io.changeDir("..")
+	return ""
+}
+
 function parse_metadata()
 {
-	local fileContents = io.readFile(package~".maus").strip().splitLines()
-	
+	try
+	{
+		global fileContents = io.readFile(find_package(package)).strip().splitLines()
+	}
+	catch(e)
+	{
+		writefln("Package does not exist")
+		exit()
+	}
+
 	local equalRegExp = regexp.Regexp("(.+)=(.+)", "g")
 	local numInstallSteps = 0
 	local numUninstallSteps = 0
 	local gettingInstallLines = 0
 	local gettingUninstallLines = 0
-
+	
 	for(i: 0..#fileContents)
 	{
 		local currentLine = fileContents[i]
-		if(gettingInstallLines < numInstallSteps)
+		if(currentLine.startsWith("#"))
 		{
-			packageInfo["installSteps"][gettingInstallLines] = currentLine
+			continue
+		}
+		else if(gettingInstallLines < numInstallSteps)
+		{
+			packageInfo["installScript"] ~= currentLine~"\n"
 			gettingInstallLines++
 		}
 		else if(gettingUninstallLines < numUninstallSteps)
 		{
-			packageInfo["uninstallSteps"][gettingUninstallLines] = currentLine
+			packageInfo["uninstallScript"] ~= currentLine~"\n"
 			gettingUninstallLines++
 		}
 		else if(equalRegExp.test(currentLine))
@@ -136,11 +197,24 @@ function parse_metadata()
 					break
 				case "install-steps":
 					numInstallSteps = toInt(value)
-					packageInfo["installSteps"] = array.new(numInstallSteps)
+					packageInfo["installScript"] = ""
 					break
 				case "uninstall-steps":
 					numUninstallSteps = toInt(value)
-					packageInfo["uninstallSteps"] = array.new(numUninstallSteps)
+					packageInfo["uninstallScript"] = ""
+					break
+				case "patch-object":
+					packageInfo["patch-object"] = value
+					break
+				case "test-command":
+					break
+				case "dependency":
+					break
+				case "min-rollback-object":
+					break
+				case "min-patch-rollback-object":
+					break
+				case "rollback-patch-equivalence":
 					break
 				default:
 					writefln("Unknown Metadata (ignoring): \"{}\"",name)
@@ -149,7 +223,6 @@ function parse_metadata()
 		else
 		{
 			writefln("Invalid metadata: {}",currentLine)
-			return 1
 		}
 	}
 }
