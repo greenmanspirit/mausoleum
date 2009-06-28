@@ -1,4 +1,4 @@
-#!/bin/mdcl
+#!mdcl
 module maus
 
 global exit = thread.halt
